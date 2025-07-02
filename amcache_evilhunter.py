@@ -25,7 +25,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.live import Live
 
-VERSION = "0.0.1"
+VERSION = "0.0.2"
 VT_API_URL = "https://www.virustotal.com/api/v3/files/{hash}"
 
 # Core fields to persist for SHA-1–bearing records
@@ -39,6 +39,7 @@ KEEP_FIELDS = {
     "SHA-1", "LowerCaseLongPath", "OriginalFileName", "BinFileVersion",
     "BinaryType", "ProductName", "ProductVersion", "LinkDate",
     "BinProductVersion", "Size", "Usn",
+    "IsOsComponent",
     # Computed date
     "RecordDate",
 }
@@ -179,12 +180,17 @@ def prune_record(vals, vt_enabled):
     if not vals.get("SHA-1"):
         return {}
     out = {}
+
     fields = set(KEEP_FIELDS)
     if vt_enabled:
         fields.update({"VT_Detections", "VT_TotalEngines", "VT_Ratio"})
     for field in fields:
+        if field == "IsOsComponent":
+            continue
         if field in vals:
             out[field] = vals[field]
+
+    out["IsOsComponent"] = bool(vals.get("IsOsComponent"))
     return out
 
 
@@ -220,6 +226,7 @@ def print_table(data, vt_enabled, api_key=None, only_detections=False):
         tbl.add_column("SHA-1", style="dim")
         tbl.add_column("Name")
         tbl.add_column("RecordDate", justify="center")
+        tbl.add_column("OS?", justify="center")
         if vt_enabled:
             tbl.add_column("VT", justify="right")
         return tbl
@@ -238,6 +245,8 @@ def print_table(data, vt_enabled, api_key=None, only_detections=False):
                 except ValueError:
                     record_dt = record_date_str
 
+                os_flag = "Yes" if vals.get("IsOsComponent") else "No"
+
                 vt_cell = ""
                 style = None
                 if vt_enabled and api_key:
@@ -247,7 +256,7 @@ def print_table(data, vt_enabled, api_key=None, only_detections=False):
                     if only_detections and (det is None or det == 0):
                         continue
 
-                row = [sha, name, record_date_str]
+                row = [sha, name, record_date_str, os_flag]
                 if vt_enabled:
                     row.append(vt_cell)
 
@@ -373,6 +382,11 @@ def main():
         help="Filter only records matching known suspicious patterns"
     )
     parser.add_argument(
+        "--exclude-os",
+        action="store_true",
+        help="Only include files not flagged as OS components"
+    )
+    parser.add_argument(
         "-v", "--vt",
         action="store_true",
         help="Enable VirusTotal lookups (requires VT_API_KEY environment variable)"
@@ -440,8 +454,20 @@ def main():
                     filtered[cat] = keep
             data = filtered
 
+        # filter suspicious patterns
         if args.find_suspicious:
             data = find_suspicious(data)
+
+        if args.exclude_os:
+            filtered = {}
+            for cat, recs in data.items():
+                keep = {}
+                for rec, vals in recs.items():
+                    if not vals.get("IsOsComponent"):
+                        keep[rec] = vals
+                if keep:
+                    filtered[cat] = keep
+            data = filtered
 
         print_table(
             data,
