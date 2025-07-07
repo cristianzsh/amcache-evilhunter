@@ -46,6 +46,15 @@ KEEP_FIELDS = {
 
 console = Console()
 
+
+def prompt_overwrite(path):
+    if path.exists():
+        ans = input(f"File {path} exists. Overwrite? [y/N]: ")
+        if ans.lower() != 'y':
+            print("Aborted: file not overwritten.", file=sys.stderr)
+            sys.exit(0)
+
+
 def find_suspicious(data):
     """
     Keep only records whose FilePath basename exactly matches one of our
@@ -53,24 +62,17 @@ def find_suspicious(data):
     OR is a one‐letter/one‐digit name, OR looks like a random hex string.
     """
     suspicious_patterns = {
-        # Malware families
         "lb3", "lockbit", "ryuk", "darkside", "conti",
         "maze", "emotet", "trickbot", "qbot", "cerber",
-        # Masquerade targets
         "svchost", "scvhost", "svch0st", "svhost",
-        "rundll32", "rundll",
-        "explorer", "expl0rer", "expiorer",
-        "csrss", "csrs",
-        "winlogon", "winlog0n", "winlogin",
-        "lsass", "lsas", "isass",
-        "services", "service", "svces",
-        "dllhost", "dihost", "dllhst",
-        "conhost", "conhost1", "conhost64",
-        "spoolsv", "splsv", "spools",
-        "taskhostw", "taskhost", "taskhost64", "taskhostw1",
-        "wmiprvse",
-        "mshta", "mshta32", "wscript", "wscript1", "cscript", "cscript5",
-        "regsvr32", "regsvr321",
+        "rundll32", "rundll", "explorer", "expl0rer", "expiorer",
+        "csrss", "csrs", "winlogon", "winlog0n", "winlogin",
+        "lsass", "lsas", "isass", "services", "service", "svces",
+        "dllhost", "dihost", "dllhst", "conhost", "conhost1",
+        "conhost64", "spoolsv", "splsv", "spools", "taskhostw",
+        "taskhost", "taskhost64", "taskhostw1", "wmiprvse",
+        "mshta", "mshta32", "wscript", "wscript1", "cscript",
+        "cscript5", "regsvr32", "regsvr321",
     }
     hex_re = re.compile(r"^[0-9a-f]{8,}$", re.IGNORECASE)
 
@@ -98,17 +100,14 @@ def find_suspicious(data):
 class AmcacheParser:
     """Parser for offline Amcache.hve registry hive."""
     def __init__(self, hive_path, start=None, end=None):
-        # Verify file exists
         if not hive_path.exists():
             raise FileNotFoundError(f"Hive file not found: {hive_path}")
-        # Attempt to load the registry hive, catch invalid-file errors
         try:
             self.registry = RegistryHive(str(hive_path))
         except RegistryParseException:
-            print(
-                f"Error: '{hive_path}' is not a valid registry hive "
-                "(invalid REGF signature).",
-                file=sys.stderr
+            console.print(
+                f"[bold red]Error:[/] '{hive_path}' is not a valid registry hive.",
+                style="red"
             )
             sys.exit(1)
 
@@ -180,7 +179,6 @@ def prune_record(vals, vt_enabled):
     if not vals.get("SHA-1"):
         return {}
     out = {}
-
     fields = set(KEEP_FIELDS)
     if vt_enabled:
         fields.update({"VT_Detections", "VT_TotalEngines", "VT_Ratio"})
@@ -189,12 +187,11 @@ def prune_record(vals, vt_enabled):
             continue
         if field in vals:
             out[field] = vals[field]
-
     out["IsOsComponent"] = bool(vals.get("IsOsComponent"))
     return out
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=1024)
 def lookup_vt(hash_value, api_key):
     """Fetch VT stats for a hash; return (detections, total, ratio)."""
     try:
@@ -214,6 +211,63 @@ def lookup_vt(hash_value, api_key):
         return None, None, ""
     except (ValueError, KeyError):
         return None, None, ""
+
+
+def write_json(path, data, vt_enabled, api_key):
+    """Write filtered records to JSON file."""
+    prompt_overwrite(path)
+
+    with path.open("w", encoding="utf-8") as f:
+        for cat, recs in data.items():
+            for rec_name, vals in recs.items():
+                kept = prune_record(vals, vt_enabled)
+                if not kept:
+                    continue
+
+                if vt_enabled:
+                    det, tot, ratio = lookup_vt(kept["SHA-1"], api_key)
+                    kept["VT_Detections"] = det
+                    kept["VT_TotalEngines"] = tot
+                    kept["VT_Ratio"] = ratio
+
+                kept["Category"] = cat
+                kept["RecordName"] = rec_name
+                f.write(json.dumps(kept, ensure_ascii=False) + "\n")
+
+
+def write_csv(path, data, vt_enabled, api_key):
+    """Write filtered records to CSV file."""
+    prompt_overwrite(path)
+
+    headers = ["Category", "RecordName", "SHA-1"]
+    other = [f for f in KEEP_FIELDS if f not in {"SHA-1", "FilePath"}]
+    headers += sorted(other) + ["FilePath"]
+    if vt_enabled:
+        headers += ["VT_Detections", "VT_TotalEngines", "VT_Ratio"]
+
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=headers)
+        writer.writeheader()
+
+        for cat, recs in data.items():
+            for rec_name, vals in recs.items():
+                kept = prune_record(vals, vt_enabled)
+                if not kept:
+                    continue
+
+                row = {
+                    "Category": cat,
+                    "RecordName": rec_name,
+                    **kept
+                }
+
+                if vt_enabled:
+                    det, tot, ratio = lookup_vt(kept["SHA-1"], api_key)
+                    row["VT_Detections"] = det
+                    row["VT_TotalEngines"] = tot
+                    row["VT_Ratio"] = ratio
+
+                writer.writerow(row)
 
 
 def print_table(data, vt_enabled, api_key=None, only_detections=False):
@@ -241,12 +295,11 @@ def print_table(data, vt_enabled, api_key=None, only_detections=False):
                 name = vals.get("Name", "")
                 record_date_str = vals.get("RecordDate", "")
                 try:
-                    record_dt = datetime.fromisoformat(record_date_str)
+                    datetime.fromisoformat(record_date_str)
                 except ValueError:
-                    record_dt = record_date_str
+                    pass
 
                 os_flag = "Yes" if vals.get("IsOsComponent") else "No"
-
                 vt_cell = ""
                 style = None
                 if vt_enabled and api_key:
@@ -260,14 +313,13 @@ def print_table(data, vt_enabled, api_key=None, only_detections=False):
                 if vt_enabled:
                     row.append(vt_cell)
 
-                rows_to_print.append((record_dt, row, style))
+                rows_to_print.append((record_date_str, row, style))
                 rows_to_print.sort(key=lambda t: t[0])
 
                 table = make_table()
                 for _, r, st in rows_to_print:
                     table.add_row(*r, style=st)
                 live.update(table)
-
                 any_printed = True
 
     if not any_printed:
@@ -278,71 +330,6 @@ def print_table(data, vt_enabled, api_key=None, only_detections=False):
         sys.exit(1 if vt_enabled and only_detections else 0)
 
 
-def write_json(path, data, vt_enabled, api_key):
-    """Write filtered records to JSON file."""
-    if vt_enabled and api_key:
-        for recs in data.values():
-            for vals in recs.values():
-                sha = vals.get("SHA-1")
-                if not sha:
-                    continue
-                det, total, ratio = lookup_vt(sha, api_key)
-                vals["VT_Detections"] = det
-                vals["VT_TotalEngines"] = total
-                vals["VT_Ratio"] = ratio
-
-    out_list = []
-    for cat, recs in data.items():
-        for rec, vals in recs.items():
-            kept = prune_record(vals, vt_enabled)
-            if not kept:
-                continue
-            kept["Category"] = cat
-            kept["RecordName"] = rec
-            out_list.append(kept)
-
-    out_list.sort(key=lambda v: v.get("RecordDate", ""))
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(out_list, f, indent=4)
-
-
-def write_csv(path, data, vt_enabled, api_key):
-    """Write filtered records to CSV file."""
-    if vt_enabled and api_key:
-        for recs in data.values():
-            for vals in recs.values():
-                sha = vals.get("SHA-1")
-                if not sha:
-                    continue
-                det, total, ratio = lookup_vt(sha, api_key)
-                vals["VT_Detections"] = det
-                vals["VT_TotalEngines"] = total
-                vals["VT_Ratio"] = ratio
-
-    rows = []
-    for cat, recs in data.items():
-        for rec, vals in recs.items():
-            kept = prune_record(vals, vt_enabled)
-            if not kept:
-                continue
-            row = {"Category": cat, "RecordName": rec}
-            row.update(kept)
-            rows.append(row)
-
-    headers = ["Category", "RecordName", "SHA-1"]
-    other = [f for f in KEEP_FIELDS if f not in {"SHA-1", "FilePath"}]
-    headers += sorted(other) + ["FilePath"]
-    if vt_enabled:
-        headers += ["VT_Detections", "VT_TotalEngines", "VT_Ratio"]
-
-    rows.sort(key=lambda r: r.get("RecordDate", ""))
-    with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=headers)
-        writer.writeheader()
-        for r in rows:
-            writer.writerow(r)
-
-
 def main():
     """CLI entry point for amcache_evilhunter."""
     parser = argparse.ArgumentParser(
@@ -350,69 +337,28 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"AmCache-EvilHunter {VERSION} by Cristian Souza (cristianmsbr@gmail.com)"
     )
-    parser.add_argument(
-        '--version', '-V',
-        action='version',
-        version=f"AmCache-EvilHunter {VERSION} by Cristian Souza (cristianmsbr@gmail.com)"
-    )
-    parser.add_argument(
-        "-i", "--input",
-        type=Path,
-        required=True,
-        help="Path to Amcache.hve"
-    )
-    parser.add_argument(
-        "--start",
-        type=str,
-        help="YYYY-MM-DD; only records on or after this date"
-    )
-    parser.add_argument(
-        "--end",
-        type=str,
-        help="YYYY-MM-DD; only records on or before this date"
-    )
-    parser.add_argument(
-        "--search",
-        type=str,
-        help="Comma-separated terms (case-insensitive)"
-    )
-    parser.add_argument(
-        "--find-suspicious",
-        action="store_true",
-        help="Filter only records matching known suspicious patterns"
-    )
-    parser.add_argument(
-        "--exclude-os",
-        action="store_true",
-        help="Only include files not flagged as OS components"
-    )
-    parser.add_argument(
-        "-v", "--vt",
-        action="store_true",
-        help="Enable VirusTotal lookups (requires VT_API_KEY environment variable)"
-    )
-    parser.add_argument(
-        "--only-detections",
-        action="store_true",
-        help="Show/save only files with ≥1 VT detection"
-    )
-    parser.add_argument(
-        "--json",
-        type=Path,
-        help="Path to write full JSON"
-    )
-    parser.add_argument(
-        "--csv",
-        type=Path,
-        help="Path to write full CSV"
-    )
+    parser.add_argument('-V', '--version', action='version',
+                        version=f"AmCache-EvilHunter {VERSION} by Cristian Souza")
+    parser.add_argument("-i", "--input", type=Path, required=True, help="Path to Amcache.hve")
+    parser.add_argument("--start", type=str, help="YYYY-MM-DD; only records on or after this date")
+    parser.add_argument("--end", type=str, help="YYYY-MM-DD; only records on or before this date")
+    parser.add_argument("--search", type=str, help="Comma-separated terms (case-insensitive)")
+    parser.add_argument("--find-suspicious", action="store_true",
+                        help="Filter only records matching known suspicious patterns")
+    parser.add_argument("--exclude-os", action="store_true", help="Only include non-OS-component files")
+    parser.add_argument("-v", "--vt", action="store_true",
+                        help="Enable VirusTotal lookups (requires VT_API_KEY)")
+    parser.add_argument("--only-detections", action="store_true",
+                        help="Show/save only files with ≥1 VT detection")
+    parser.add_argument("--json", type=Path, help="Path to write JSON Lines")
+    parser.add_argument("--csv", type=Path, help="Path to write CSV")
     args = parser.parse_args()
 
     api_key = None
     if args.vt:
         api_key = os.getenv("VT_API_KEY")
         if not api_key:
-            print("Error: VT_API_KEY environment variable not set", file=sys.stderr)
+            console.print("[bold red]Error:[/] VT_API_KEY environment variable not set", style="red")
             sys.exit(1)
 
     start_dt = None
@@ -421,16 +367,16 @@ def main():
         try:
             start_dt = datetime.strptime(args.start, "%Y-%m-%d")
         except ValueError:
-            print("Error: --start must be YYYY-MM-DD", file=sys.stderr)
+            console.print("[bold red]Error:[/] --start must be YYYY-MM-DD", style="red")
             sys.exit(1)
     if args.end:
         try:
             end_dt = datetime.strptime(args.end, "%Y-%m-%d")
         except ValueError:
-            print("Error: --end must be YYYY-MM-DD", file=sys.stderr)
+            console.print("[bold red]Error:[/] --end must be YYYY-MM-DD", style="red")
             sys.exit(1)
     if start_dt and end_dt and start_dt > end_dt:
-        print("Error: --start must be on or before --end", file=sys.stderr)
+        console.print("[bold red]Error:[/] --start must be on or before --end", style="red")
         sys.exit(1)
 
     search_terms = None
@@ -440,16 +386,16 @@ def main():
     try:
         parser = AmcacheParser(args.input, start_dt, end_dt)
         data = parser.parse()
-
         normalize_data(data)
 
         if search_terms:
             filtered = {}
             for cat, recs in data.items():
-                keep = {}
-                for rec, vals in recs.items():
-                    if any(term in vals.get("FilePath", "").lower() for term in search_terms):
-                        keep[rec] = vals
+                keep = {
+                    rec: vals
+                    for rec, vals in recs.items()
+                    if any(term in vals.get("FilePath", "").lower() for term in search_terms)
+                }
                 if keep:
                     filtered[cat] = keep
             data = filtered
@@ -461,41 +407,23 @@ def main():
         if args.exclude_os:
             filtered = {}
             for cat, recs in data.items():
-                keep = {}
-                for rec, vals in recs.items():
-                    if not vals.get("IsOsComponent"):
-                        keep[rec] = vals
+                keep = {rec: vals for rec, vals in recs.items() if not vals.get("IsOsComponent")}
                 if keep:
                     filtered[cat] = keep
             data = filtered
 
-        print_table(
-            data,
-            vt_enabled=args.vt,
-            api_key=api_key,
-            only_detections=args.only_detections,
-        )
+        print_table(data, vt_enabled=args.vt, api_key=api_key, only_detections=args.only_detections)
 
         if args.json:
-            write_json(
-                args.json,
-                data,
-                vt_enabled=args.vt,
-                api_key=api_key,
-            )
+            write_json(args.json, data, vt_enabled=args.vt, api_key=api_key)
         if args.csv:
-            write_csv(
-                args.csv,
-                data,
-                vt_enabled=args.vt,
-                api_key=api_key,
-            )
+            write_csv(args.csv, data, vt_enabled=args.vt, api_key=api_key)
 
     except FileNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        console.print(f"[bold red]Error:[/] {e}", style="red")
         sys.exit(1)
     except HTTPError as e:
-        print(f"HTTP error: {e}", file=sys.stderr)
+        console.print(f"[bold red]HTTP error:[/] {e}", style="red")
         sys.exit(1)
 
 
