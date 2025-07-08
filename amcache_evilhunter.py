@@ -55,7 +55,7 @@ def prompt_overwrite(path):
             sys.exit(0)
 
 
-def find_suspicious(data):
+def find_suspicious_name(data):
     """
     Keep only records whose FilePath basename exactly matches one of our
     known suspicious executables (case‐insensitive), ends with .exe,
@@ -91,6 +91,21 @@ def find_suspicious(data):
                 or stem.isdigit()
                 or hex_re.match(stem)
             ):
+                keep[rec] = vals
+        if keep:
+            filtered[cat] = keep
+    return filtered
+
+
+def find_missing_publisher(data):
+    """
+    Keep only records where the Publisher field is missing or empty.
+    """
+    filtered = {}
+    for cat, recs in data.items():
+        keep = {}
+        for rec, vals in recs.items():
+            if not vals.get("Publisher"):
                 keep[rec] = vals
         if keep:
             filtered[cat] = keep
@@ -343,8 +358,10 @@ def main():
     parser.add_argument("--start", type=str, help="YYYY-MM-DD; only records on or after this date")
     parser.add_argument("--end", type=str, help="YYYY-MM-DD; only records on or before this date")
     parser.add_argument("--search", type=str, help="Comma-separated terms (case-insensitive)")
-    parser.add_argument("--find-suspicious", action="store_true",
-                        help="Filter only records matching known suspicious patterns")
+    parser.add_argument("--find-suspicious-name", action="store_true",
+                        help="Filter only records matching known suspicious name patterns")
+    parser.add_argument("--find-missing-publisher", action="store_true",
+                        help="Filter only records with missing Publisher")
     parser.add_argument("--exclude-os", action="store_true", help="Only include non-OS-component files")
     parser.add_argument("-v", "--vt", action="store_true",
                         help="Enable VirusTotal lookups (requires VT_API_KEY)")
@@ -401,8 +418,12 @@ def main():
             data = filtered
 
         # filter suspicious patterns
-        if args.find_suspicious:
+        if args.find_suspicious_name:
             data = find_suspicious(data)
+
+        # filter suspicious publishers
+        if args.find_missing_publisher:
+            data = find_missing_publisher(data)
 
         if args.exclude_os:
             filtered = {}
