@@ -55,7 +55,7 @@ def prompt_overwrite(path):
             sys.exit(0)
 
 
-def find_suspicious_name(data):
+def find_suspicious(data):
     """
     Keep only records whose FilePath basename exactly matches one of our
     known suspicious executables (case‐insensitive), ends with .exe,
@@ -358,7 +358,7 @@ def main():
     parser.add_argument("--start", type=str, help="YYYY-MM-DD; only records on or after this date")
     parser.add_argument("--end", type=str, help="YYYY-MM-DD; only records on or before this date")
     parser.add_argument("--search", type=str, help="Comma-separated terms (case-insensitive)")
-    parser.add_argument("--find-suspicious-name", action="store_true",
+    parser.add_argument("--find-suspicious", action="store_true",
                         help="Filter only records matching known suspicious name patterns")
     parser.add_argument("--find-missing-publisher", action="store_true",
                         help="Filter only records with missing Publisher")
@@ -418,7 +418,7 @@ def main():
             data = filtered
 
         # filter suspicious patterns
-        if args.find_suspicious_name:
+        if args.find_suspicious:
             data = find_suspicious(data)
 
         # filter suspicious publishers
