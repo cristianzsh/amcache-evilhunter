@@ -10,6 +10,7 @@ https://github.com/user-attachments/assets/e23fb99b-48ad-4260-b372-2f15e5320c74
 * Filter records by date range (`--start`, `--end`).
 * Search records using keywords (`--search`).
 * Identify known suspicious executables (`--find-suspicious`).
+* Identify executables without a publisher (`--missing-publisher`).
 * VirusTotal integration for hash lookups (`--vt`, `--only-detections`).
 * Export results to JSON (`--json`) or CSV (`--csv`).
 
@@ -49,6 +50,7 @@ python3 amcache_evilhunter.py -i path/to/Amcache.hve [OPTIONS]
 | `--end YYYY-MM-DD`   | Only include records on or before this date                    |
 | `--search TERMS`     | Comma-separated, case-insensitive search terms                 |
 | `--find-suspicious`  | Filter only records matching known suspicious patterns         |
+| `--missing-publisher`| Filter only records with missing Publisher                     |
 | `-v`, `--vt`         | Enable VirusTotal lookups (requires `VT_API_KEY` env variable) |
 | `--only-detections`  | Show/save only files with ≥1 VT detection                      |
 | `--json PATH`        | Path to write full JSON output                                 |
