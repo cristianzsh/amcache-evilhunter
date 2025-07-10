@@ -97,7 +97,7 @@ def find_suspicious(data):
     return filtered
 
 
-def find_missing_publisher(data):
+def missing_publisher(data):
     """
     Keep only records where the Publisher field is missing or empty.
     """
@@ -360,7 +360,7 @@ def main():
     parser.add_argument("--search", type=str, help="Comma-separated terms (case-insensitive)")
     parser.add_argument("--find-suspicious", action="store_true",
                         help="Filter only records matching known suspicious name patterns")
-    parser.add_argument("--find-missing-publisher", action="store_true",
+    parser.add_argument("--missing-publisher", action="store_true",
                         help="Filter only records with missing Publisher")
     parser.add_argument("--exclude-os", action="store_true", help="Only include non-OS-component files")
     parser.add_argument("-v", "--vt", action="store_true",
@@ -422,8 +422,8 @@ def main():
             data = find_suspicious(data)
 
         # filter suspicious publishers
-        if args.find_missing_publisher:
-            data = find_missing_publisher(data)
+        if args.missing_publisher:
+            data = missing_publisher(data)
 
         if args.exclude_os:
             filtered = {}
