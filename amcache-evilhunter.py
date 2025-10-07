@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 from functools import lru_cache
 from datetime import datetime, timedelta
+from dotenv import dotenv_values
 
 import requests
 from requests.exceptions import HTTPError
@@ -115,6 +116,7 @@ def missing_publisher(data):
 
 class AmcacheParser:
     """Parser for offline Amcache.hve registry hive."""
+
     def __init__(self, hive_path, start=None, end=None):
         if not hive_path.exists():
             raise FileNotFoundError(f"Hive file not found: {hive_path}")
@@ -395,9 +397,9 @@ def main():
 
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-v", "--vt", action="store_true",
-                       help="Enable VirusTotal lookups (requires VT_API_KEY)")
+                       help="Enable VirusTotal lookups (requires VT_API_KEY in .env)")
     group.add_argument("--opentip", action="store_true",
-                       help="Enable Kaspersky OpenTIP lookups (requires OPENTIP_API_KEY)")
+                       help="Enable Kaspersky OpenTIP lookups (requires OPENTIP_API_KEY in .env)")
 
     parser.add_argument('-V', '--version', action='version',
                         version=f"AmCache-EvilHunter {VERSION} by Cristian Souza")
@@ -416,17 +418,36 @@ def main():
     parser.add_argument("--csv", type=Path, help="Path to write CSV")
     args = parser.parse_args()
 
+    env_vars = dotenv_values("env")
+
     vt_api_key = None
     ot_api_key = None
     if args.vt:
-        vt_api_key = os.getenv("VT_API_KEY")
+        vt_api_key = env_vars.get("VT_API_KEY")
         if not vt_api_key:
-            console.print("[bold red]Error:[/] VT_API_KEY environment variable not set", style="red")
+            console.print("[bold red]Error:[/] VT_API_KEY not set in .env", style="red")
             sys.exit(1)
+        else:
+            url = "https://www.virustotal.com/api/v3/users/me"
+            headers = {"x-apikey": vt_api_key}
+
+            response = requests.get(url, headers=headers)
+
+            if response.status_code == 200:
+                console.print("[bold green]Success:[/] VirusTotal API key is valid!", style="green")
+                user_info = response.json()
+            elif response.status_code == 401:
+                console.print(f"[bold red]Error:[/] Invalid VirusTotal API key. [bold red]Reason:[/] {response.json().get('error').get('message')}", style="red")
+                sys.exit(1)
+            else:
+                console.print(f"[bold red]Error:[/] Checking API key: {response.status_code}", style="red")
+                console.print(response.text)
+                sys.exit(1)
+
     if args.opentip:
-        ot_api_key = os.getenv("OPENTIP_API_KEY")
+        ot_api_key = env_vars.get("OPENTIP_API_KEY")
         if not ot_api_key:
-            console.print("[bold red]Error:[/] OPENTIP_API_KEY environment variable not set", style="red")
+            console.print("[bold red]Error:[/] OPENTIP_API_KEY not set in .env", style="red")
             sys.exit(1)
 
     # parse date filters
