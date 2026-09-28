@@ -101,6 +101,25 @@ chmod +x build.sh
 ./build.sh
 ```
 
+## How to cite this work
+
+`AmCache-EvilHunter` was presented at the XXVI Brazilian Symposium on Cybersecurity (SBSeg 2026).
+
+```
+@inproceedings{souza2026amcache,
+  author = {Cristian Souza and Eduardo Chavarro and Daniel Batista},
+  title = {AmCache-EvilHunter: Automating Evidence of Execution Extraction from the Amcache.hve Artifact},
+  booktitle = {Anais Estendidos do XXVI Simpósio Brasileiro de Cibersegurança},
+  location = {Armação dos Búzios/RJ},
+  year = {2026},
+  pages = {100--108},
+  publisher = {SBC},
+  address = {Porto Alegre, RS, Brasil},
+  doi = {10.5753/sbseg_estendido.2026.33555},
+  url = {https://sol.sbc.org.br/index.php/sbseg_estendido/article/view/44456}
+}
+```
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
