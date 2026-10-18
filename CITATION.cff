@@ -1,0 +1,40 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "AmCache-EvilHunter"
+abstract: "Automates evidence-of-execution extraction from the Amcache.hve artifact."
+authors:
+  - family-names: "Souza"
+    given-names: "Cristian"
+    orcid: "https://orcid.org/0000-0002-2395-9930"
+  - family-names: "Chavarro"
+    given-names: "Eduardo"
+  - family-names: "Batista"
+    given-names: "Daniel"
+repository-code: "https://github.com/cristianzsh/amcache-evilhunter"
+license: MIT
+preferred-citation:
+  type: conference-paper
+  title: "AmCache-EvilHunter: Automating Evidence of Execution Extraction from the Amcache.hve Artifact"
+  authors:
+    - family-names: "Souza"
+      given-names: "Cristian"
+      orcid: "https://orcid.org/0000-0002-2395-9930"
+    - family-names: "Chavarro"
+      given-names: "Eduardo"
+    - family-names: "Batista"
+      given-names: "Daniel"
+  collection-title: "Anais Estendidos do XXVI Simpósio Brasileiro de Cibersegurança"
+  conference:
+    name: "XXVI Simpósio Brasileiro de Cibersegurança (SBSeg)"
+    location: "Armação dos Búzios/RJ"
+  publisher:
+    name: "SBC"
+    city: "Porto Alegre"
+    region: "RS"
+    country: "BR"
+  year: 2026
+  start: 100
+  end: 108
+  doi: "10.5753/sbseg_estendido.2026.33555"
+  url: "https://sol.sbc.org.br/index.php/sbseg_estendido/article/view/44456"
